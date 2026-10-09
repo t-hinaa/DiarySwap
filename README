@@ -312,6 +312,9 @@ Nuxtから直接記述NG（開発者ツールから丸見えになる）
 ### 画面遷移図
 Figma：<https://www.figma.com/design/D6Ks3rhcwX8Vf4ivlo5hUb/DiarySwap?node-id=0-1&p=f&t=oSRSm5AWEbVkL5p7-0>
 
+### ER図
+dbdiagram.io:<https://dbdiagram.io/d/DiarySwap-6ac8e0a250a8c6fc361120ee>
+
 ### 本サービスの概要
 
 20代女性のライフステージの変化に寄り添う交換日記アプリです。

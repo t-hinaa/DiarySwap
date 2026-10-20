@@ -239,7 +239,7 @@ setlogみたく短い動画で手軽に伝えられるのも魅力的だが、�
 - フレームワーク：Nuxt
 - DB：PostgreSQL
 - デプロイ先：Vercel
-- 使用予定ライブラリ：Vue.js 、Vite、@nuxtjs/supabase、@nuxtjs/tailwindcss、@heroicons/vue（tailwind公式のSVGアイコンライブラリ）、@vueuse/motion（アニメーション）、dayjs（日付）、@vite-pwa/nuxt（スマホアプリ化）
+- 使用予定ライブラリ：Vue.js 、Vite、@nuxtjs/supabase、@nuxtjs/tailwindcss、@heroicons/vue（tailwind公式のSVGアイコンライブラリ）、@vueuse/motion（アニメーション）、dayjs（日付）、@vite-pwa/nuxt（スマホアプリ化）、@nuxt/eslint（構文エラー）、@vitest/coverage-v8（ガバレッジ機能）、zod(モデルテスト)、
 - 自動停止予防の定期実行ジョブ（GitHub Actions）
 - LINEログイン(SPA)
 - 通知機能（LINE：Messaging API、メール：Resend）

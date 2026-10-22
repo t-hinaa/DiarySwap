@@ -4,6 +4,12 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
 
   modules: [
-    '@nuxtjs/supabase'
-  ]
+    '@nuxtjs/supabase',
+    '@nuxtjs/tailwindcss'
+  ],
+
+  // 未ログイン時 /login へ飛ばす機能をOFF
+  supabase: {
+    redirect: false
+  }
 })

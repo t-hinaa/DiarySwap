@@ -8,7 +8,7 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "test": "vitest run"
+    "test": "vitest run --coverage"
   },
   "dependencies": {
     "@nuxtjs/tailwindcss": "^6.14.0",

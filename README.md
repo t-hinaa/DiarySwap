@@ -72,4 +72,11 @@ yarn preview
 bun run preview
 ```
 
+## テストを実行
+
+```bash
+npm test
+
+
+
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.

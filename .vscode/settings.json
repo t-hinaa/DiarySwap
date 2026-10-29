@@ -1,7 +1,10 @@
 {
+  "deno.enable": false,
   "deno.enablePaths": [
     "supabase/functions"
   ],
+  "deno.config": "supabase/functions/deno.json",
+  "deno.suggest.imports.autoDiscover": true,
   "deno.lint": true,
   "deno.unstable": [
     "bare-node-builtins",

@@ -25,3 +25,7 @@ logs
 
 # Test
 coverage/
+
+# Denoのロックファイルは各環境で自動生成させるためGit管理から外す
+deno.lock
+supabase/functions/deno.lock

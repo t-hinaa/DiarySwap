@@ -75,7 +75,16 @@ bun run preview
 ## テストを実行
 
 ```bash
+# Nuxt / coverage / Zod tests
 npm test
+
+# deno
+## ファイルを指定してテストする時
+deno test --config=supabase/functions/deno.json supabase/functions/user/helper_test.ts #user/意向を都度変更
+
+## 一括テストしたい時
+deno test --config=supabase/functions/deno.json supabase/functions/
+```
 
 
 

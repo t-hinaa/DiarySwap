@@ -80,7 +80,7 @@ npm test
 
 # deno / zod
 ## ファイルを指定してテストする時
-deno test --config=supabase/functions/deno.json supabase/functions/user/helper_test.ts #user/意向を都度変更
+deno test --config=supabase/functions/deno.json supabase/functions/users/helper_test.ts #users/意向を都度変更
 
 ## 一括テストしたい時
 deno test --config=supabase/functions/deno.json supabase/functions/

@@ -20,13 +20,11 @@ const supabase = useSupabaseClient()
 
 // 設定
 const LINE_CHANNEL_ID = "2012285519"
-const SUPABASE_URL = `https://bmwibppijrcgbhvodylz.supabase.co`
     
 // LINEログイン
 const loginWithLine = () => {
     const redirectUri = window.location.origin
     const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${LINE_CHANNEL_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=12345&scope=profile%20openid`
-
     window.location.href = lineAuthUrl
 }
 
@@ -50,6 +48,16 @@ onMounted(async () => {
 
             if (!response.ok) {
                 throw new Error(result.error || 'ログインに失敗しました') 
+            }
+
+            // ログイン状態を確立する
+            const { error:verifyErr } = await supabase.auth.verifyOtp({
+                token_hash: result.hashedToken,
+                type: 'email',
+            })
+
+            if (verifyErr) {
+                throw verifyErr
             }
 
             // URLを削除してから/homeへ

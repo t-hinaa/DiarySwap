@@ -23,51 +23,15 @@ const LINE_CHANNEL_ID = "2012285519"
     
 // LINEログイン
 const loginWithLine = () => {
-    const redirectUri = window.location.origin
-    const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${LINE_CHANNEL_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=12345&scope=profile%20openid`
+    const redirectUri = `${window.location.origin}/auth/callback`
+
+    // window.location.pathnameの中にstateを入れる
+    const targetPath = (window.location.pathname === '/' || window.location.pathname === '') 
+        ? '/home' 
+        : window.location.pathname
+    const stateValue = encodeURIComponent(targetPath)
+
+    const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${LINE_CHANNEL_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${stateValue}&scope=profile%20openid`
     window.location.href = lineAuthUrl
 }
-
-// LINEログイン後に戻ってきた時のコード受け取り処理
-onMounted(async () => {
-    const urlParams = new URLSearchParams(window.location.search)
-    const code = urlParams.get('code')
-
-    if (code) {
-        try {
-            const response = await fetch(`https://bmwibppijrcgbhvodylz.supabase.co/functions/v1/quick-responder`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    code: code,
-                    redirect_uri: window.location.origin,
-                }),
-            })
-
-            const result = await response.json()
-
-            if (!response.ok) {
-                throw new Error(result.error || 'ログインに失敗しました') 
-            }
-
-            // ログイン状態を確立する
-            const { error:verifyErr } = await supabase.auth.verifyOtp({
-                token_hash: result.hashedToken,
-                type: 'email',
-            })
-
-            if (verifyErr) {
-                throw verifyErr
-            }
-
-            // URLを削除してから/homeへ
-            window.history.replaceState({}, document.title, window.location.pathname)
-            navigateTo('/home')
-
-        } catch (err) {
-            console.error('認証エラー:', err)
-            alert(`ログインに失敗しました: ${err.message}`)
-        }
-    }
-})    
 </script>

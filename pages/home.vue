@@ -1,3 +1,14 @@
+<script setup>
+import { useRouter } from 'vue-router';
+
+const router = useRouter()
+
+//グループ作成画面
+const goToGroupCreate = () => {
+    router.push('/groups/create')
+}
+</script>
+
 <template>
     <div class="min-h-[calc(100vh-73px)] bg-[#faf8F5] flex flex-col items-center justify-center px-4 py-8 overflow-hidden">
 
@@ -22,7 +33,10 @@
             <div class="w-full md:w-72 h-80 bg-white/70 backdrop-blur-md rounded-[50%_50%_70%_30%/40%_60%_40%_60%] p-6 flex flex-col items-center justify-center shadow-sm border border-stone-200/50 hover:-translate-y-1 hover:shadow-lg hover:scale-[1.02] transition duration-300 cursor-pointer">
                 <div class="text-center">
                     <h3 class="text-stone-800 font-medium text-sm">新しい交換日記を始める</h3>
-                    <button class="bg-[#8B263E] text-white px-8 py-3.5 rounded-full font-medium text-sm shadow-md hover:bg-[#721f33] transition duration-200 flex items-center justify-center gap-2">
+                    <button 
+                        @click="goToGroupCreate"
+                        class="bg-[#8B263E] text-white px-8 py-3.5 rounded-full font-medium text-sm shadow-md hover:bg-[#721f33] transition duration-200 flex items-center justify-center gap-2"
+                    >
                         グループを作成
                     </button>
                 </div>

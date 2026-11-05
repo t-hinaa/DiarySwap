@@ -1,0 +1,197 @@
+-- ==========================================
+-- usersテーブル & 自動連携トリガー
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    line_user_id TEXT UNIQUE, 
+    display_name TEXT,          -- デフォルトで Nullable（空欄OK）
+    avatar_url TEXT,            -- デフォルトで Nullable（空欄OK）
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- テーブルのセキュリティ権限を絞る
+REVOKE ALL ON users FROM anon;
+GRANT SELECT, INSERT, UPDATE ON users TO authenticated;
+
+-- RLSを有効化
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+-- ユーザーテーブルのポリシー設定
+DROP POLICY IF EXISTS "ユーザーは自分のプロフィールのみ閲覧可能" ON users;
+CREATE POLICY "ユーザーは自分のプロフィールのみ閲覧可能"
+ON users FOR SELECT
+USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "ユーザーは自分のプロフィールのみ作成可能" ON users;
+CREATE POLICY "ユーザーは自分のプロフィールのみ作成可能"
+ON users FOR INSERT
+WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "ユーザーは自分のプロフィールのみ更新可能" ON users;
+CREATE POLICY "ユーザーは自分のプロフィールのみ更新可能"
+ON users FOR UPDATE
+USING (auth.uid() = id);
+
+-- ログイン時に自動で users テーブルに書き込む関数(自動トリガー関数)
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER 
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    INSERT INTO public.users (id, display_name, avatar_url,line_user_id)
+    VALUES (
+    new.id,
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'avatar_url',
+    new.raw_user_meta_data->>'line_user_id'
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- トリガーの登録
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+-- ==========================================
+-- groupsテーブル
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS public.groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    invite_code TEXT UNIQUE NOT NULL,
+    exchange_frequency TEXT DEFAULT 'daily',
+    theme_package TEXT DEFAULT 'earl_grey',
+    current_turn_index INTEGER DEFAULT 1,
+    current_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RLSを有効化
+ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
+
+-- groups のポリシー
+-- 作成（INSERT）はEdge Functionsが行うためポリシー不要
+
+DROP POLICY IF EXISTS "メンバーのみグループ情報を閲覧可能" ON public.groups;
+CREATE POLICY "メンバーのみグループ情報を閲覧可能"
+ON public.groups 
+FOR SELECT
+TO authenticated
+USING (
+    id IN (
+        SELECT group_id FROM public.group_members WHERE user_id = auth.uid()
+    )
+);
+
+--  【RPC関数】招待コードからグループ情報を安全に取得（未ログイン可）
+CREATE OR REPLACE FUNCTION public.get_group_by_invite_code(p_invite_code TEXT)
+RETURNS TABLE (
+    id UUID,
+    name TEXT,
+    exchange_frequency TEXT,
+    theme_package TEXT
+) 
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT g.id, g.name, g.exchange_frequency, g.theme_package
+    FROM public.groups g
+    WHERE g.invite_code = p_invite_code;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 【ヘルパー関数】無限ループを防ぐためのメンバー判定関数
+CREATE OR REPLACE FUNCTION public.is_group_member(p_group_id UUID)
+RETURNS BOOLEAN
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 
+        FROM public.group_members 
+        WHERE group_id = p_group_id 
+            AND user_id = auth.uid()
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- ==========================================
+-- group_membersテーブル
+-- ==========================================
+CREATE TABLE IF NOT EXISTS public.group_members (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    turn_order INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RLSを有効化
+ALTER TABLE public.group_members ENABLE ROW LEVEL SECURITY;
+
+-- group_membersのポリシー
+DROP POLICY IF EXISTS "自分と、自分と同じグループのメンバーの情報のみ閲覧可能" ON public.group_members;
+CREATE POLICY "自分と、自分と同じグループのメンバーの情報のみ閲覧可能"
+ON public.group_members
+FOR SELECT
+TO authenticated
+USING (
+    user_id = auth.uid()
+    OR
+    public.is_group_member(group_id)
+);
+
+DROP POLICY IF EXISTS "ログイン済みのユーザーが「自分自身のメンバー情報」を追加できる" ON public.group_members;
+CREATE POLICY "ログイン済みのユーザーが「自分自身のメンバー情報」を追加できる"
+ON public.group_members
+FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = user_id);
+
+-- 参加のチェック＆交換順の自動計算RPC関数
+CREATE OR REPLACE FUNCTION join_group_with_turn_order(p_group_id uuid, p_user_id uuid)
+returns integer
+language plpgsql
+security definer
+as $$
+declare
+    v_max_order integer;
+    v_next_order integer;
+    v_existing_count integer;
+begin
+    -- すでに参加しているかチェック
+    select count(*) into v_existing_count
+    from group_members
+    where group_id = p_group_id and user_id = p_user_id;
+
+    if v_existing_count > 0 then
+        return -1; -- すでに参加済み
+    end if;
+
+    -- 現在の最大の turn_order を取得
+    select coalesce(max(turn_order), 0) into v_max_order
+    from group_members
+    where group_id = p_group_id;
+
+    v_next_order := v_max_order + 1;
+
+    -- 新規メンバーとして挿入
+    insert into group_members (group_id, user_id, turn_order)
+    values (p_group_id, p_user_id, v_next_order);
+
+    return v_next_order;
+end;
+$$;

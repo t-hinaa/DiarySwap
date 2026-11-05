@@ -6,8 +6,12 @@
             class="bg-[#FAF8F5]/90 backdrop-blur border-b border-stone-200/60 px-6 py-4 sticky top-0 z-50">
             <div class="max-w-7xl mx-auto flex justify-between items-center">
                 <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 bg-[#8B263E] text-white rounded-full flex items-center justify-center font-bold text-sm shadow-sm">
-                        📕
+                    <div class="w-9 h-9 bg-[#8B263E] rounded-full overflow-hidden flex items-center justify-center font-bold text-sm shadow-sm">
+                        <img
+                            src="/images/logo.png"
+                            alt="Logo"
+                            class="w-full h-full object-cover"
+                        />
                     </div>
                     <NuxtLink to="/home" class="text-xl font-bold text-[#8B263E] tracking-wide hover:opacity-80 transition">
                         DiarySwap
@@ -24,7 +28,7 @@
                     <NuxtLink to="/write" class="px-5 py-2 rounded-full text-stone-600 font-medium hover:text-stone-900 transition duration-200">
                         日記を書く
                     </NuxtLink>
-                    <NuxtLink to="/create" class="px-5 py-2 rounded-full text-stone-600 font-medium hover:text-stone-900 transition duration-200">
+                    <NuxtLink to="/groups/create" class="px-5 py-2 rounded-full text-stone-600 font-medium hover:text-stone-900 transition duration-200">
                         日記を始める
                     </NuxtLink>
                 </nav>

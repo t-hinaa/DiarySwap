@@ -195,3 +195,33 @@ begin
     return v_next_order;
 end;
 $$;
+
+-- 参加している交換日記の情報をまとめて取得するためのRPC関数
+create or replace function get_my_diary_books()
+returns table (
+    group_id uuid,
+    name text,
+    exchange_frequency text,
+    theme_package text,
+    current_turn_index integer,
+    current_count integer,
+    turn_order integer
+)
+language plpgsql
+security definer
+as $$
+begin
+    return query
+    select 
+        g.id as group_id,
+        g.name,
+        g.exchange_frequency,
+        g.theme_package,
+        g.current_turn_index,
+        g.current_count,
+        gm.turn_order
+    from public.group_members gm
+    join public.groups g on gm.group_id = g.id
+    where gm.user_id = auth.uid(); -- Supabaseの認証機能から現在のユーザーIDを取得
+end;
+$$;

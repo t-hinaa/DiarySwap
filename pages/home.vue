@@ -7,6 +7,12 @@ const router = useRouter()
 const goToGroupCreate = () => {
     router.push('/groups/create')
 }
+
+// 日記一覧画面
+const goToList = () => {
+    router.push('/list/')
+}
+
 </script>
 
 <template>
@@ -16,7 +22,10 @@ const goToGroupCreate = () => {
         
             <div class="w-full md:w-72 h-80 bg-white/70 backdrop-blur-md rounded-[60%_40%_30%_70%/60%_30%_70%_40%] p-6 flex flex-col items-center justify-center shadow-sm border border-stone-200/50 hover:-translate-y-1 hover:shadow-lg hover:scale-[1.02] transition duration-300 cursor-pointer">
                 <div class="flex flex-col items-center justify-center my-auto">
-                    <button class="bg-[#8B263E] text-white px-8 py-3.5 rounded-full font-medium text-sm shadow-md hover:bg-[#721f33] transition duration-200 flex items-center justify-center gap-2">
+                    <button 
+                        @click="goToList"
+                        class="bg-[#8B263E] text-white px-8 py-3.5 rounded-full font-medium text-sm shadow-md hover:bg-[#721f33] transition duration-200 flex items-center justify-center gap-2"
+                    >
                         <span>📖</span>日記を読む
                     </button>
                 </div>

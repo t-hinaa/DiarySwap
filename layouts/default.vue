@@ -43,7 +43,14 @@
 
                     <div class="flex items-center gap-2">
                         <div class="w-9 h-9 rounded-full bg-[#8E263E] text-white flex items-center justify-center text-xs font-bold shadow-sm overflow-hidden">
-                            <span>🧸</span>
+                            <!-- ユーザーアイコンがあれば表示、なければデフォルトの絵文字 -->
+                            <img
+                                v-if="user?.user_metadata?.avatar_url"
+                                :src="user.user_metadata.avatar_url"
+                                alt="User Avatar"
+                                class="w-full h-full object-cover"
+                            />
+                            <span v-else>🧸</span>
                         </div>
                     </div>
                 </div>
@@ -57,9 +64,25 @@
 </template>
 
 <script setup>
-const route = useRoute()
+import { useRoute, useRouter } from 'vue-router';
 
-const handleLogout = () => {
-    console.log('ログアウトします')
+const route = useRoute()
+const router = useRouter()
+const supabase =useSupabaseClient() // インスタンス取得
+const user = useSupabaseUser() //ログイン中のユーザー情報を取得
+
+
+const handleLogout = async () => {
+    try {
+        // supabaseインスタンスからログアウト処理
+        const { error } = await supabase.auth.signOut()
+        if (error) throw error
+
+        // ログアウトに成功したらTOP画面へリダイレクト
+        router.push('/')
+    }catch (err) {
+        console.error('ログアウトエラー', err)
+        alert('ログアウトに失敗しました: ' + err.message)
+    }
 }
 </script>

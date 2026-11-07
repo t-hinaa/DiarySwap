@@ -1,5 +1,5 @@
 -- ==========================================
--- usersテーブル & 自動連携トリガー
+-- usersテーブル
 -- ==========================================
 
 CREATE TABLE IF NOT EXISTS public.users (
@@ -127,9 +127,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
 -- ==========================================
 -- group_membersテーブル
 -- ==========================================
+
 CREATE TABLE IF NOT EXISTS public.group_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE,
@@ -224,4 +226,147 @@ begin
     join public.groups g on gm.group_id = g.id
     where gm.user_id = auth.uid(); -- Supabaseの認証機能から現在のユーザーIDを取得
 end;
+$$;
+
+
+-- ==========================================
+-- themesテーブル
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS public.themes (
+    id TEXT PRIMARY KEY,               -- 'earl_grey'などの文字列をそのままIDに
+    title TEXT NOT NULL,               -- 'アールグレイ' などのテーマ名
+    subtitle TEXT,
+    points TEXT[],
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RLSの有効化
+ALTER TABLE public.themes ENABLE ROW LEVEL SECURITY;
+
+-- ポリシー設定
+CREATE POLICY "ログインしているユーザーであれば誰でもお題を閲覧できる"
+ON public.themes 
+FOR SELECT
+USING (auth.uid() IS NOT NULL);
+
+
+-- ==========================================
+-- diariesテーブル
+-- ==========================================
+CREATE TABLE IF NOT EXISTS public.diaries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE,
+    author_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    theme_id UUID  REFERENCES public.themes(id) ON DELETE SET NULL, --お題が削除されても日記は残る
+    date DATE,
+    weather TEXT,
+    content TEXT,
+    theme_text TEXT,
+    seal_stamp TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RLSの有効化
+ALTER TABLE public.diaries ENABLE ROW LEVEL SECURITY;
+
+-- ポリシー設定
+CREATE POLICY "グループのメンバーであれば日記を閲覧できる"
+ON public.diaries
+FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM public.group_members gm
+        WHERE gm.group_id = diaries.group_id
+        AND gm.user_id = auth.uid()
+    )
+);
+
+CREATE POLICY "自分のIDで、所属するグループであれば日記を投稿できる"
+ON public.diaries
+FOR INSERT
+WITH CHECK (
+    auth.uid() = author_id
+    AND EXISTS (
+    SELECT 1 FROM public.group_members gm
+    WHERE gm.group_id = diaries.group_id
+    AND gm.user_id = auth.uid()
+    )
+);
+
+CREATE POLICY "自分の日記のみ更新可能"
+ON public.diaries
+FOR UPDATE
+USING (
+    auth.uid() = author_id
+    AND EXISTS (
+        SELECT 1 FROM public.group_members gm
+        WHERE gm.group_id = diaries.group_id
+        AND gm.user_id = auth.uid()
+    )
+)
+-- author_idを書き換えられてないかチェック
+WITH CHECK (
+    auth.uid() = author_id
+);
+
+
+-- 日記投稿用のRPC関数
+CREATE OR REPLACE FUNCTION create_diary_post(
+    p_group_id UUID,
+    p_content TEXT,
+    p_theme_text TEXT DEFAULT NULL,
+    p_weather TEXT DEFAULT NULL,
+    p_seal_stamp TEXT DEFAULT NULL,
+    p_theme_id UUID DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_diary_id UUID;
+    v_user_id UUID;
+BEGIN
+    -- 現在ログインしているユーザーのIDを取得
+    v_user_id := auth.uid();
+    if v_user_id is null then
+        RAISE EXCEPTION 'ログインしていません。';
+    END IF;
+
+    -- ユーザーがそのグループのメンバーかチェック
+    if not exists (
+        SELECT 1 FROM public.group_members 
+        WHERE group_id = p_group_id AND user_id = v_user_id
+    ) then
+        RAISE EXCEPTION 'このグループのメンバーではありません。';
+    END IF;
+
+    -- diariesテーブルに新しい日記を登録
+    INSERT INTO public.diaries (
+        group_id,
+        author_id,
+        theme_id,
+        date,
+        weather,
+        content,
+        theme_text,
+        seal_stamp
+    ) VALUES (
+        p_group_id,
+        v_user_id,
+        p_theme_id,
+        current_date,
+        p_weather,
+        p_content,
+        p_theme_text,
+        p_seal_stamp
+    )
+    RETURNING id INTO v_diary_id;
+
+    -- 作成された日記のIDを返す
+    RETURN v_diary_id;
+END;
 $$;

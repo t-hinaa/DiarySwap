@@ -6,12 +6,21 @@ const route = useRoute()
 const router = useRouter()
 const supabase = useSupabaseClient()
 
+const group = ref({})
+const currentUserId = ref(null) //ログイン中のユーザーIDを入れる変数
+
 const groupId = route.params.id
 
 const groupDetails = ref(null)
 const diaryPosts = ref([])
 const isLoading = ref(true)
 const errorMessage = ref('')
+
+// 編集画面へ
+const goToEdit = () => {
+    const groupId = route.params.id
+    router.push(`/groups/${groupId}/edit`)
+}
 
 const fetchGroupDetail = async () => {
     try {
@@ -53,13 +62,22 @@ onMounted(() => {
     <div class="min-h-[calc(100vh-73px)] bg-[#FAF8F5] flex flex-col items-center justify-start px-4 py-12 text-stone-800">
 
         <div class="w-full max-w-5xl">
-            <!-- 戻るボタン -->
-            <div class="w-full max-w-lg mb-4 flex justify-start">
+            
+            <div class="w-full max-5xl mb-4 flex items-center">
+                <!-- 戻るボタン -->
                 <button
                     @click="router.push('/list')"
                     class="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white border border-[#e2DAD0] text-[#5A1222] hover:bg-[#F4EFEA] shadow-sm transition text-xs font-bold tracking-wider"
                 >
                     <span>一覧へ</span>
+                </button>
+
+                <!-- 編集ボタン -->
+                <button
+                    @click="router.push('/edit')"
+                    class="ml-auto inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white border border-[#e2DAD0] text-[#5A1222] hover:bg-[#F4EFEA] shadow-sm transition text-xs font-bold tracking-wider"
+                >
+                    <span>編集画面へ</span>
                 </button>
             </div>
 

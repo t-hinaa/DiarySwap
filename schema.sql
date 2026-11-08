@@ -255,6 +255,7 @@ USING (auth.uid() IS NOT NULL);
 -- ==========================================
 -- diariesテーブル
 -- ==========================================
+
 CREATE TABLE IF NOT EXISTS public.diaries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE,
@@ -273,6 +274,7 @@ CREATE TABLE IF NOT EXISTS public.diaries (
 ALTER TABLE public.diaries ENABLE ROW LEVEL SECURITY;
 
 -- ポリシー設定
+DROP POLICY IF EXISTS "グループのメンバーであれば日記を閲覧できる" ON public.diaries;
 CREATE POLICY "グループのメンバーであれば日記を閲覧できる"
 ON public.diaries
 FOR SELECT
@@ -284,6 +286,7 @@ USING (
     )
 );
 
+DROP POLICY IF EXISTS "自分のIDで、所属するグループであれば日記を投稿できる" ON public.diaries;
 CREATE POLICY "自分のIDで、所属するグループであれば日記を投稿できる"
 ON public.diaries
 FOR INSERT
@@ -296,19 +299,23 @@ WITH CHECK (
     )
 );
 
+DROP POLICY IF EXISTS "自分の日記のみ更新可能" ON public.diaries;
 CREATE POLICY "自分の日記のみ更新可能"
 ON public.diaries
 FOR UPDATE
 USING (
+    -- 条件１：　自分がその日記を書いた本人であること
     auth.uid() = author_id
+    -- 条件２：　その日記が属するグループのメンバーであること
     AND EXISTS (
         SELECT 1 FROM public.group_members gm
         WHERE gm.group_id = diaries.group_id
         AND gm.user_id = auth.uid()
     )
 )
--- author_idを書き換えられてないかチェック
+
 WITH CHECK (
+    -- 更新後もauthor_idが変わっていないこと（日記のすり替え防止）
     auth.uid() = author_id
 );
 
@@ -368,5 +375,57 @@ BEGIN
 
     -- 作成された日記のIDを返す
     RETURN v_diary_id;
+END;
+$$;
+
+-- 日記更新用のRPC関数
+CREATE OR REPLACE FUNCTION update_diary_post(
+    p_diary_id UUID,
+    p_content TEXT,
+    p_theme_text TEXT DEFAULT NULL,
+    p_weather TEXT DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_group_id UUID;
+BEGIN
+    -- 現在ログインしているユーザーのIDを取得
+    v_user_id := auth.uid();
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'ログインしていません。';
+    END IF;
+
+    -- 自分が書いた日記か確認、その日記が属する group_id を取得
+    SELECT group_id INTO v_group_id
+    FROM public.diaries
+    WHERE id = p_diary_id AND author_id = v_user_id;
+
+    IF v_group_id IS NULL THEN
+        RAISE EXCEPTION '編集権限がないか、該当する日記が見つかりません。';
+    END IF;
+
+    -- 現在もそのグループのメンバーかチェック
+    IF NOT EXISTS (
+        SELECT 1 FROM public.group_members 
+        WHERE group_id = v_group_id AND user_id = v_user_id
+    ) THEN
+        RAISE EXCEPTION 'このグループのメンバーではありません。';
+    END IF;
+
+    -- データの更新実行
+    UPDATE public.diaries
+    SET 
+        content = p_content,
+        theme_text = COALESCE(p_theme_text, theme_text),
+        weather = COALESCE(p_weather, weather),
+        updated_at = timezone('utc'::text, now())
+    WHERE id = p_diary_id;
+
+    -- 更新した日記のIDを返す
+    RETURN p_diary_id;
 END;
 $$;

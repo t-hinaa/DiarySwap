@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 
 const router = useRouter()
 const supabase = useSupabaseClient()
+const themes = ref([])
 const isLoading = ref(false)
 const createdInviteUrl = ref('') // 生成された招待リンク
 
@@ -18,60 +19,35 @@ const form = reactive({
 const selectedThemeForModal = ref(null)
 const hoveredTheme = ref(null)
 
-const themes = [
-    {
-        id: 'earl_grey',
-        name: 'アールグレイ',
-        subtitle: 'カフェにいる時みたいに優雅におしゃべりできる話題',
-        points: [
-            '今住んでいる街のお気に入りの場所',
-            '私たちの学生時代の頃でふと思い出したエピソード',
-            '最近の小さな悩みやモヤモヤ',
-            'おばあちゃんになったら一緒にやりたいこと'
-        ]
-    },
-    {
-        id: 'wine',
-        name: 'ワイン',
-        subtitle: 'お酒を片手におしゃべりできる話題',
-        points: [
-            '最近買って良かったベストコスメ',
-            '便利家電やお惣菜などリアルに頼って良かった\n手抜き・効率化について',
-            '本や映画などでハッとさせられた心に残っている言葉',
-            'このかわし方・言い換えを覚えてから楽になったという\n世渡りテク'
-        ]
-    },
-    {
-        id: 'soda',
-        name: 'ソーダ',
-        subtitle: '公園でおしゃべりしているかのような手軽な話題',
-        points: [
-            'QOL爆あがりの定番ストック飯',
-            '最近思わずしてしまったジャケ買いについて',
-            '最近よく見た動画',
-            '今週絶対やりたいこと'
-        ]
-    },
-    {
-        id: 'soup',
-        name: 'スープ',
-        subtitle: '心まで暖かくなる話題',
-        points: [
-            '褒めてあげたい今週の自分の行い',
-            '最近考えすぎちゃっていること',
-            '今体が一番求めているもの',
-            '一年前の今頃に比べて生きやすくなったと感じたこと'
-        ]
-    }
+// DBからお題一覧を取得
+const fetchThemes = async () => {
+    try {
+        isLoading.value = true
 
-]
+        const { data, error } = await supabase
+            .from('themes')
+            .select('*')     //全て取得
+
+        if (error) throw error
+
+        themes.value = data || []
+        console.log('取得したテーマ一覧:', themes.value)
+    } catch (err) {
+        console.error('テーマの取得に失敗しました:', err.message)
+    } finally {
+        isLoading.value = false
+    }
+}
+onMounted(() => {
+    fetchThemes()
+})
 
 // モーダル内で決定ボタンを押した時の処理
 const confirmTheme = (themeId) => {
     form.theme_package = themeId
     selectedThemeForModal.value = null //モーダルを閉じる
-    const chosen = themes.find(t =>t.id === themeId)
-    alert(`「${chosen.name}」に決定しました！`)
+    const chosen = themes.value.find(t =>t.id === themeId)
+    alert(`「${chosen.title}」に決定しました！`)
 }
 
 
@@ -237,7 +213,7 @@ const goToDiariesCreate = () => {
                             :class="form.theme_package === theme.id ? 'border-[#5A1222] bg-[#F4EFEA] text-[#5A1222]' : 'border-[#E2DAD0] bg-[#FAFAF8] text-[#6B5B53]'"
                             class="border rounded-xl p-3 text-xs font-medium transition text-center relative"
                         >
-                            {{ theme.name }}
+                            {{ theme.title }}
                             <!-- 選択中のお題 -->
                             <span v-if="form.theme_package === theme.id" class="absolute -top-1.5 -right-1.5 bg-[#5A1222] text-[#D4AF37] text-[9px] px-1.5 py-0.5 rounded-full font-bold shadow-sm">
                                 選択中
@@ -308,7 +284,7 @@ const goToDiariesCreate = () => {
                     <span class="text-[10px] uppercase tracking-wider font-semibold text-[#8C7B73] bg-[#F4EFEA] px-2 py-1 rounded">
                         お題パッケージ詳細
                     </span>
-                    <h3 class="text-xl font-bold text-[#5A1222] mt-2">【 {{ selectedThemeForModal.name }} 】</h3>
+                    <h3 class="text-xl font-bold text-[#5A1222] mt-2">【 {{ selectedThemeForModal.title }} 】</h3>
                 </div>
 
                 <!-- 詳細テキストボックス -->

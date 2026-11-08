@@ -1,5 +1,5 @@
 -- ==========================================
--- usersテーブル & 自動連携トリガー
+-- usersテーブル
 -- ==========================================
 
 CREATE TABLE IF NOT EXISTS public.users (
@@ -127,9 +127,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
 -- ==========================================
 -- group_membersテーブル
 -- ==========================================
+
 CREATE TABLE IF NOT EXISTS public.group_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE,
@@ -224,4 +226,206 @@ begin
     join public.groups g on gm.group_id = g.id
     where gm.user_id = auth.uid(); -- Supabaseの認証機能から現在のユーザーIDを取得
 end;
+$$;
+
+
+-- ==========================================
+-- themesテーブル
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS public.themes (
+    id TEXT PRIMARY KEY,               -- 'earl_grey'などの文字列をそのままIDに
+    title TEXT NOT NULL,               -- 'アールグレイ' などのテーマ名
+    subtitle TEXT,
+    points TEXT[],
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RLSの有効化
+ALTER TABLE public.themes ENABLE ROW LEVEL SECURITY;
+
+-- ポリシー設定
+CREATE POLICY "ログインしているユーザーであれば誰でもお題を閲覧できる"
+ON public.themes 
+FOR SELECT
+USING (auth.uid() IS NOT NULL);
+
+
+-- ==========================================
+-- diariesテーブル
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS public.diaries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE,
+    author_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    theme_id UUID  REFERENCES public.themes(id) ON DELETE SET NULL, --お題が削除されても日記は残る
+    date DATE,
+    weather TEXT,
+    content TEXT,
+    theme_text TEXT,
+    seal_stamp TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RLSの有効化
+ALTER TABLE public.diaries ENABLE ROW LEVEL SECURITY;
+
+-- ポリシー設定
+DROP POLICY IF EXISTS "グループのメンバーであれば日記を閲覧できる" ON public.diaries;
+CREATE POLICY "グループのメンバーであれば日記を閲覧できる"
+ON public.diaries
+FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM public.group_members gm
+        WHERE gm.group_id = diaries.group_id
+        AND gm.user_id = auth.uid()
+    )
+);
+
+DROP POLICY IF EXISTS "自分のIDで、所属するグループであれば日記を投稿できる" ON public.diaries;
+CREATE POLICY "自分のIDで、所属するグループであれば日記を投稿できる"
+ON public.diaries
+FOR INSERT
+WITH CHECK (
+    auth.uid() = author_id
+    AND EXISTS (
+    SELECT 1 FROM public.group_members gm
+    WHERE gm.group_id = diaries.group_id
+    AND gm.user_id = auth.uid()
+    )
+);
+
+DROP POLICY IF EXISTS "自分の日記のみ更新可能" ON public.diaries;
+CREATE POLICY "自分の日記のみ更新可能"
+ON public.diaries
+FOR UPDATE
+USING (
+    -- 条件１：　自分がその日記を書いた本人であること
+    auth.uid() = author_id
+    -- 条件２：　その日記が属するグループのメンバーであること
+    AND EXISTS (
+        SELECT 1 FROM public.group_members gm
+        WHERE gm.group_id = diaries.group_id
+        AND gm.user_id = auth.uid()
+    )
+)
+
+WITH CHECK (
+    -- 更新後もauthor_idが変わっていないこと（日記のすり替え防止）
+    auth.uid() = author_id
+);
+
+
+-- 日記投稿用のRPC関数
+CREATE OR REPLACE FUNCTION create_diary_post(
+    p_group_id UUID,
+    p_content TEXT,
+    p_theme_text TEXT DEFAULT NULL,
+    p_weather TEXT DEFAULT NULL,
+    p_seal_stamp TEXT DEFAULT NULL,
+    p_theme_id UUID DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_diary_id UUID;
+    v_user_id UUID;
+BEGIN
+    -- 現在ログインしているユーザーのIDを取得
+    v_user_id := auth.uid();
+    if v_user_id is null then
+        RAISE EXCEPTION 'ログインしていません。';
+    END IF;
+
+    -- ユーザーがそのグループのメンバーかチェック
+    if not exists (
+        SELECT 1 FROM public.group_members 
+        WHERE group_id = p_group_id AND user_id = v_user_id
+    ) then
+        RAISE EXCEPTION 'このグループのメンバーではありません。';
+    END IF;
+
+    -- diariesテーブルに新しい日記を登録
+    INSERT INTO public.diaries (
+        group_id,
+        author_id,
+        theme_id,
+        date,
+        weather,
+        content,
+        theme_text,
+        seal_stamp
+    ) VALUES (
+        p_group_id,
+        v_user_id,
+        p_theme_id,
+        current_date,
+        p_weather,
+        p_content,
+        p_theme_text,
+        p_seal_stamp
+    )
+    RETURNING id INTO v_diary_id;
+
+    -- 作成された日記のIDを返す
+    RETURN v_diary_id;
+END;
+$$;
+
+-- 日記更新用のRPC関数
+CREATE OR REPLACE FUNCTION update_diary_post(
+    p_diary_id UUID,
+    p_content TEXT,
+    p_theme_text TEXT DEFAULT NULL,
+    p_weather TEXT DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_group_id UUID;
+BEGIN
+    -- 現在ログインしているユーザーのIDを取得
+    v_user_id := auth.uid();
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'ログインしていません。';
+    END IF;
+
+    -- 自分が書いた日記か確認、その日記が属する group_id を取得
+    SELECT group_id INTO v_group_id
+    FROM public.diaries
+    WHERE id = p_diary_id AND author_id = v_user_id;
+
+    IF v_group_id IS NULL THEN
+        RAISE EXCEPTION '編集権限がないか、該当する日記が見つかりません。';
+    END IF;
+
+    -- 現在もそのグループのメンバーかチェック
+    IF NOT EXISTS (
+        SELECT 1 FROM public.group_members 
+        WHERE group_id = v_group_id AND user_id = v_user_id
+    ) THEN
+        RAISE EXCEPTION 'このグループのメンバーではありません。';
+    END IF;
+
+    -- データの更新実行
+    UPDATE public.diaries
+    SET 
+        content = p_content,
+        theme_text = COALESCE(p_theme_text, theme_text),
+        weather = COALESCE(p_weather, weather),
+        updated_at = timezone('utc'::text, now())
+    WHERE id = p_diary_id;
+
+    -- 更新した日記のIDを返す
+    RETURN p_diary_id;
+END;
 $$;

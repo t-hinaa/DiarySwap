@@ -1,16 +1,24 @@
 <script setup>
-import { useRouter } from 'vue-router';
+import { useRouter,useRoute } from 'vue-router';
 
 const router = useRouter()
+const route = useRoute()
 
-//グループ作成画面
-const goToGroupCreate = () => {
-    router.push('/groups/create')
-}
+const groupId = route.params.id
 
 // 日記一覧画面
 const goToList = () => {
     router.push('/list/')
+}
+
+// 日記作成画面
+const goToCreate = () => {
+    router.push(`/groups/${groupId}/create`)
+}
+
+//グループ作成画面
+const goToGroupCreate = () => {
+    router.push('/groups/create')
 }
 
 </script>
@@ -33,7 +41,10 @@ const goToList = () => {
 
             <div class="w-full md:w-[460px] h-[420px] bg-white/80 backdrop-blur-md rounded-[30%_70%_50%_50%/50%_40%_60%_50%] p-8 flex flex-col justify-between shadow-xl border border-stone-200/60 relative hover:-translate-y-1 hover:shadow-2xl hover:scale-[1.02] transition duration-300">
                 <div class="flex flex-col items-center justify-center my-auto">
-                    <button class="bg-[#8B263E] text-white px-8 py-3.5 rounded-full font-medium text-sm shadow-md hover:bg-[#721f33] transition duration-200 flex items-center justify-center gap-2">
+                    <button
+                        @click="goToCreate"
+                        class="bg-[#8B263E] text-white px-8 py-3.5 rounded-full font-medium text-sm shadow-md hover:bg-[#721f33] transition duration-200 flex items-center justify-center gap-2"
+                    >
                         <span>✍️</span>日記を書く
                     </button>
                 </div>

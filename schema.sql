@@ -198,36 +198,6 @@ begin
 end;
 $$;
 
--- 参加している交換日記の情報をまとめて取得するためのRPC関数
-create or replace function get_my_diary_books()
-returns table (
-    group_id uuid,
-    name text,
-    exchange_frequency text,
-    theme_package text,
-    current_turn_index integer,
-    current_count integer,
-    turn_order integer
-)
-language plpgsql
-security definer
-as $$
-begin
-    return query
-    select 
-        g.id as group_id,
-        g.name,
-        g.exchange_frequency,
-        g.theme_package,
-        g.current_turn_index,
-        g.current_count,
-        gm.turn_order
-    from public.group_members gm
-    join public.groups g on gm.group_id = g.id
-    where gm.user_id = auth.uid(); -- Supabaseの認証機能から現在のユーザーIDを取得
-end;
-$$;
-
 -- グループのお題を返すRPC関数
 drop function if exists get_group_theme(uuid);
 create or replace function get_group_theme(p_group_id uuid)
@@ -518,4 +488,84 @@ BEGIN
     -- 更新した日記のIDを返す
     RETURN p_diary_id;
 END;
+$$;
+
+
+-- ==========================================
+-- 参加している交換日記の情報をまとめて取得するためRPC関数（一覧画面用）
+-- ==========================================
+
+create or replace function get_my_diary_books()
+returns table (
+    group_id uuid,
+    name text,
+    exchange_frequency text,
+    theme_package text,
+    current_turn_index integer,
+    current_count integer,
+    turn_order integer
+)
+language plpgsql
+security definer
+as $$
+begin
+    return query
+    select 
+        g.id as group_id,
+        g.name,
+        g.exchange_frequency,
+        g.theme_package,
+        g.current_turn_index,
+        g.current_count,
+        gm.turn_order
+    from public.group_members gm
+    join public.groups g on gm.group_id = g.id
+    where gm.user_id = auth.uid(); -- Supabaseの認証機能から現在のユーザーIDを取得
+end;
+$$;
+
+
+-- ==========================================
+-- 交換日記の情報を全てまとめて取得するためRPC関数（詳細画面用）
+-- ==========================================
+
+create or replace function public.get_group_diary_details(p_group_id uuid)
+returns json
+language plpgsql
+security definer
+as $$
+declare
+    v_result json;
+begin
+    select json_build_object(
+        'group', (select row_to_json(g) from public.groups g where g.id = p_group_id),
+        'posts', (
+            coalesce(
+                (
+                    select json_agg(
+                        json_build_object(
+                            'id', d.id,
+                            'content', d.content,
+                            'date', d.date,
+                            'weather', d.weather,
+                            'author_name', coalesce(u.display_name, 'メンバー'),
+                            'theme_title', t.title,
+                            'theme_points', t.points,
+                            'theme_text', d.theme_text,
+                            'seal_stamp ', d.seal_stamp 
+                        )
+                        order by d.created_at desc
+                    )
+                    from public.diaries d
+                    left join public.users u on d.author_id = u.id
+                    left join public.themes t on d.theme_id = t.id
+                    where d.group_id = p_group_id
+                ),
+                '[]'::json
+            )
+        )
+    ) into v_result;
+
+    return v_result;
+end;
 $$;

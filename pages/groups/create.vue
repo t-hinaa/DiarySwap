@@ -1,12 +1,15 @@
 <script setup>
 import { reactive, ref  } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter,useRoute } from 'vue-router';
 
 const router = useRouter()
+const route = useRoute()
 const supabase = useSupabaseClient()
 const themes = ref([])
 const isLoading = ref(false)
 const createdInviteUrl = ref('') // 生成された招待リンク
+
+const createdGroupId = ref('')
 
 // フォームの入力データ
 const form = reactive({
@@ -91,7 +94,11 @@ const createGroup = async () => {
 
         // グループデータと招待コードを取り出す
         const groupData = responseData.group
+        const groupId = groupData.id
         const invite_code = groupData.invite_code
+
+        // 取得したIDを変数として保持
+        createdGroupId.value = groupId
 
         // 招待リンクを作成
         const origin = window.location.origin
@@ -137,8 +144,13 @@ const shareOnLine = () => {
 }
 
 // 日記執筆画面へ
-const goToDiariesCreate = () => {
-    router.push('/diaries/create')
+const goToCreate = () => {
+    if (!createdGroupId.value) {
+        alert('まだグループが作成されていません。')
+        return
+    }
+    // 保存しておいたIDを使って遷移する
+    router.push(`/groups/${createdGroupId.value}/create`)
 }
 </script>
 
@@ -260,7 +272,7 @@ const goToDiariesCreate = () => {
                 </button>
 
                 <button
-                    @click="goToDiariesCreate"
+                    @click="goToCreate"
                     class="w-full bg-[#EFECE6] hover:bg-[#E4DFD5] text-[#5A1222] font-medium py-3 rounded-xl transition text-sm"
                 >
                     日記画面へ進む

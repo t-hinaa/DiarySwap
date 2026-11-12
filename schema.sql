@@ -198,16 +198,12 @@ begin
 end;
 $$;
 
--- 参加している交換日記の情報をまとめて取得するためのRPC関数
-create or replace function get_my_diary_books()
+-- グループのお題を返すRPC関数
+drop function if exists get_group_theme(uuid);
+create or replace function get_group_theme(p_group_id uuid)
 returns table (
-    group_id uuid,
-    name text,
-    exchange_frequency text,
-    theme_package text,
-    current_turn_index integer,
-    current_count integer,
-    turn_order integer
+    id text,
+    points text[]
 )
 language plpgsql
 security definer
@@ -215,19 +211,13 @@ as $$
 begin
     return query
     select 
-        g.id as group_id,
-        g.name,
-        g.exchange_frequency,
-        g.theme_package,
-        g.current_turn_index,
-        g.current_count,
-        gm.turn_order
-    from public.group_members gm
-    join public.groups g on gm.group_id = g.id
-    where gm.user_id = auth.uid(); -- Supabaseの認証機能から現在のユーザーIDを取得
+        t.id,
+        t.points::text[]
+    from public.groups g
+    join public.themes t on g.theme_package = t.id
+    where g.id = p_group_id;
 end;
 $$;
-
 
 -- ==========================================
 -- themesテーブル
@@ -260,11 +250,11 @@ CREATE TABLE IF NOT EXISTS public.diaries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id UUID REFERENCES public.groups(id) ON DELETE CASCADE,
     author_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-    theme_id UUID  REFERENCES public.themes(id) ON DELETE SET NULL, --お題が削除されても日記は残る
+    theme_id TEXT  REFERENCES public.themes(id) ON DELETE SET NULL, --お題が削除されても日記は残る
     date DATE,
     weather TEXT,
     content TEXT,
-    theme_text TEXT,
+    theme_text JSONB,
     seal_stamp TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
@@ -320,14 +310,14 @@ WITH CHECK (
 );
 
 
--- 日記投稿用のRPC関数
+-- 日記投稿&交換順の自動計算RPC関数
 CREATE OR REPLACE FUNCTION create_diary_post(
     p_group_id UUID,
     p_content TEXT,
-    p_theme_text TEXT DEFAULT NULL,
+    p_theme_text JSONB DEFAULT NULL,
     p_weather TEXT DEFAULT NULL,
     p_seal_stamp TEXT DEFAULT NULL,
-    p_theme_id UUID DEFAULT NULL
+    p_theme_id TEXT DEFAULT NULL
 )
 RETURNS UUID
 LANGUAGE plpgsql
@@ -336,18 +326,26 @@ AS $$
 DECLARE
     v_diary_id UUID;
     v_user_id UUID;
+    v_member_count INT;
+    v_current_turn INT;
+    v_next_turn INT;
+    v_next_line_user_id TEXT;
+    v_group_name TEXT;
+    v_display_name TEXT;
+    v_access_token TEXT := 'ここにLINEのチャネルアクセストークンを貼り付け';
+    v_message TEXT;
 BEGIN
-    -- 現在ログインしているユーザーのIDを取得
+    -- ログインチェック
     v_user_id := auth.uid();
-    if v_user_id is null then
+    IF v_user_id IS NULL THEN
         RAISE EXCEPTION 'ログインしていません。';
     END IF;
 
-    -- ユーザーがそのグループのメンバーかチェック
-    if not exists (
+    -- メンバーチェック
+    IF NOT EXISTS (
         SELECT 1 FROM public.group_members 
         WHERE group_id = p_group_id AND user_id = v_user_id
-    ) then
+    ) THEN
         RAISE EXCEPTION 'このグループのメンバーではありません。';
     END IF;
 
@@ -373,16 +371,78 @@ BEGIN
     )
     RETURNING id INTO v_diary_id;
 
-    -- 作成された日記のIDを返す
+-- net.http_post 機能（HTTP拡張機能）有効化
+create extension if not exists pg_net with schema extensions;
+    -- グループのメンバー数を取得
+    SELECT count(*) INTO v_member_count 
+    FROM public.group_members 
+    WHERE group_id = p_group_id;
+
+    -- 今のcurrent_turn_index とグループ名を取得
+    SELECT COALESCE(current_turn_index, 1), name 
+    INTO v_current_turn, v_group_name
+    FROM public.groups 
+    WHERE id = p_group_id;
+
+    -- 1始まりで次のターンの番号を計算
+    IF v_member_count > 0 THEN
+        v_next_turn := ((v_current_turn) % v_member_count) + 1;
+    ELSE
+        v_next_turn := 1;
+    END IF;
+
+    -- 投稿数と「1始まりのターン」を更新
+    UPDATE public.groups
+    SET 
+        current_count = COALESCE(current_count, 0) + 1,
+        current_turn_index = v_next_turn,
+        updated_at = timezone('utc'::text, now())
+    WHERE id = p_group_id;
+
+    -- 【LINE通知】次のターンの人（turn_order が v_next_turn の人）のLINE IDを取得
+    SELECT u.line_user_id INTO v_next_line_user_id
+    FROM public.group_members gm
+    JOIN public.users u ON gm.user_id = u.id
+    WHERE gm.group_id = p_group_id
+        AND gm.turn_order = v_next_turn;
+    
+    -- 投稿者の名前も取得（メッセージ用）
+    SELECT display_name INTO v_display_name FROM public.users WHERE id = v_user_id;
+
+    -- 次の人のLINE IDが存在し、かつ1人グループでなければ通知送信
+    IF v_next_line_user_id IS NOT NULL AND v_member_count > 1 THEN
+        v_message := format(
+            E'📖 【%s】\n\n%sさんが日記を封印しました！\n次はあなたの番です！\n\n「%s...」',
+            COALESCE(v_group_name, '交換日記'),
+            COALESCE(v_display_name, 'メンバー'),
+            substring(COALESCE(p_content, ''), 1, 25)
+        );
+
+        PERFORM net.http_post(
+            url := 'https://api.line.me/v2/bot/message/push',
+            headers := jsonb_build_object(
+                'Content-Type', 'application/json',
+                'Authorization', 'Bearer ' || v_access_token
+            ),
+            body := jsonb_build_object(
+                'to', v_next_line_user_id,
+                'messages', jsonb_build_array(
+                    jsonb_build_object('type', 'text', 'text', v_message)
+                )
+            )
+        );
+    END IF;
+
     RETURN v_diary_id;
 END;
 $$;
+
 
 -- 日記更新用のRPC関数
 CREATE OR REPLACE FUNCTION update_diary_post(
     p_diary_id UUID,
     p_content TEXT,
-    p_theme_text TEXT DEFAULT NULL,
+    p_theme_text JSONB DEFAULT NULL,
     p_weather TEXT DEFAULT NULL
 )
 RETURNS UUID
@@ -428,4 +488,84 @@ BEGIN
     -- 更新した日記のIDを返す
     RETURN p_diary_id;
 END;
+$$;
+
+
+-- ==========================================
+-- 参加している交換日記の情報をまとめて取得するためRPC関数（一覧画面用）
+-- ==========================================
+
+create or replace function get_my_diary_books()
+returns table (
+    group_id uuid,
+    name text,
+    exchange_frequency text,
+    theme_package text,
+    current_turn_index integer,
+    current_count integer,
+    turn_order integer
+)
+language plpgsql
+security definer
+as $$
+begin
+    return query
+    select 
+        g.id as group_id,
+        g.name,
+        g.exchange_frequency,
+        g.theme_package,
+        g.current_turn_index,
+        g.current_count,
+        gm.turn_order
+    from public.group_members gm
+    join public.groups g on gm.group_id = g.id
+    where gm.user_id = auth.uid(); -- Supabaseの認証機能から現在のユーザーIDを取得
+end;
+$$;
+
+
+-- ==========================================
+-- 交換日記の情報を全てまとめて取得するためRPC関数（詳細画面用）
+-- ==========================================
+
+create or replace function public.get_group_diary_details(p_group_id uuid)
+returns json
+language plpgsql
+security definer
+as $$
+declare
+    v_result json;
+begin
+    select json_build_object(
+        'group', (select row_to_json(g) from public.groups g where g.id = p_group_id),
+        'posts', (
+            coalesce(
+                (
+                    select json_agg(
+                        json_build_object(
+                            'id', d.id,
+                            'content', d.content,
+                            'date', d.date,
+                            'weather', d.weather,
+                            'author_name', coalesce(u.display_name, 'メンバー'),
+                            'theme_title', t.title,
+                            'theme_points', t.points,
+                            'theme_text', d.theme_text,
+                            'seal_stamp ', d.seal_stamp 
+                        )
+                        order by d.created_at desc
+                    )
+                    from public.diaries d
+                    left join public.users u on d.author_id = u.id
+                    left join public.themes t on d.theme_id = t.id
+                    where d.group_id = p_group_id
+                ),
+                '[]'::json
+            )
+        )
+    ) into v_result;
+
+    return v_result;
+end;
 $$;

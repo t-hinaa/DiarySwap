@@ -4,6 +4,8 @@ import { useRouter,useRoute } from 'vue-router';
 const router = useRouter()
 const route = useRoute()
 
+const isLoading = ref(true);
+
 // 日記一覧画面
 const goToList = () => {
     router.push('/list/')
@@ -11,12 +13,12 @@ const goToList = () => {
 
 // 日記作成画面
 const goToCreate = () => {
-    const targetId = route.params.id
-    if (!targetId || targetId === 'undefined') {
-        alert('グループ情報の読み込み中です。少々お待ちください。')
-        return
+    const groupId = route.params.id
+    if (!groupId) {
+        alert('グループ情報が取得できませんでした。ページを再読み込みしてください。');
+        return;
     }
-    router.push(`/groups/${targetId}/create`)
+    router.push('/groups/${groupId}/create');
 }
 
 //グループ作成画面

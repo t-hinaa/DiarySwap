@@ -42,12 +42,6 @@ const currentPost = computed(() => {
 // ページ数の計算（何セット分投稿があるか）
 const totalPostsCount = computed(()=> diaryPosts.value.length || 1);
 
-// 編集画面へ
-const goToEdit = () => {
-    const groupId = route.params.id
-    router.push(`/groups/${groupId}/edit`)
-}
-
 // 日付を綺麗に
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -82,6 +76,15 @@ const fetchGroupDetail = async () => {
 onMounted(() => {
     fetchGroupDetail();
 });
+
+// 日記編集画面へ
+const goToEdit = () => { 
+    if (!groupId) {
+        alert('対象のグループが見つかりません。')
+        return
+    }
+    router.push(`/groups/${groupId}/edit`)
+}
 </script>
 
 <template>
@@ -97,7 +100,7 @@ onMounted(() => {
             </button>
             <!-- 編集ボタン -->
             <button
-                @click="router.push('/edit')"
+                @click="router.push(`/groups/${groupId}/edit`)"
                 class="ml-auto inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white border border-[#e2DAD0] text-[#5A1222] hover:bg-[#F4EFEA] shadow-sm transition text-xs font-bold tracking-wider"
             >
                 <span>編集画面へ</span>

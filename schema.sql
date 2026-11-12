@@ -48,6 +48,11 @@ BEGIN
     new.raw_user_meta_data->>'avatar_url',
     new.raw_user_meta_data->>'line_user_id'
     );
+    -- すでに同じ line_user_id が存在していれば更新
+    ON CONFLICT (line_user_id) 
+    DO UPDATE SET
+        display_name = EXCLUDED.display_name,
+        avatar_url = EXCLUDED.avatar_url;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -438,12 +443,13 @@ END;
 $$;
 
 
--- 日記更新用のRPC関数
+-- 日記編集用のRPC関数
 CREATE OR REPLACE FUNCTION update_diary_post(
     p_diary_id UUID,
     p_content TEXT,
     p_theme_text JSONB DEFAULT NULL,
-    p_weather TEXT DEFAULT NULL
+    p_weather TEXT DEFAULT NULL,
+    p_date Date DEFAULT NULL
 )
 RETURNS UUID
 LANGUAGE plpgsql
@@ -479,9 +485,11 @@ BEGIN
     -- データの更新実行
     UPDATE public.diaries
     SET 
-        content = p_content,
-        theme_text = COALESCE(p_theme_text, theme_text),
+        content = COALESCE(p_content, content),
+        -- p_theme_text が渡されたらそのまま使い、NULLなら既存のままにする
+        theme_text = COALESCE(p_theme_text, theme_text::jsonb),
         weather = COALESCE(p_weather, weather),
+        date = COALESCE(p_date, date),
         updated_at = timezone('utc'::text, now())
     WHERE id = p_diary_id;
 
@@ -489,7 +497,8 @@ BEGIN
     RETURN p_diary_id;
 END;
 $$;
-
+-- ログイン済みユーザーにのみ実行権限を与える
+GRANT EXECUTE ON FUNCTION public.update_diary_post(UUID, TEXT, JSONB, TEXT, DATE) TO authenticated;
 
 -- ==========================================
 -- 参加している交換日記の情報をまとめて取得するためRPC関数（一覧画面用）
@@ -537,6 +546,15 @@ as $$
 declare
     v_result json;
 begin
+
+    -- グループのメンバーかチェック
+    IF NOT EXISTS (
+        SELECT 1 FROM public.group_members 
+        WHERE group_id = v_group_id AND user_id = v_user_id
+    ) THEN
+        RAISE EXCEPTION 'このグループのメンバーではありません。';
+    END IF;
+
     select json_build_object(
         'group', (select row_to_json(g) from public.groups g where g.id = p_group_id),
         'posts', (
@@ -552,7 +570,7 @@ begin
                             'theme_title', t.title,
                             'theme_points', t.points,
                             'theme_text', d.theme_text,
-                            'seal_stamp ', d.seal_stamp 
+                            'seal_stamp', d.seal_stamp 
                         )
                         order by d.created_at desc
                     )
@@ -569,3 +587,5 @@ begin
     return v_result;
 end;
 $$;
+-- ログイン済みユーザーにのみ実行権限を与える
+GRANT EXECUTE ON FUNCTION public.get_group_diary_details(uuid) TO authenticated;

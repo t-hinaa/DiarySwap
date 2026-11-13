@@ -24,7 +24,7 @@ const goToCreate = async () => {
         
         if (!user) {
             alert('ログインが必要です。');
-            router.push('/login');
+            router.push('/');
             return;
         }
 

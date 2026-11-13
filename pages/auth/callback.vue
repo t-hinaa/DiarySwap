@@ -42,22 +42,38 @@ onMounted(async () => {
 
             // state から「本来戻るべきページのパス」を取り出す（なければ /home）
             const stateParam = new URLSearchParams(window.location.search).get('state')
-            let originalPath = decodeURIComponent(stateParam || '/home')
-            if (!originalPath.startsWith('/')) {
-                originalPath = '/home'
+            let originalPath = '/home' // デフォルトの戻り先
+
+            if (stateParam) {
+                try {
+                    const decoded = decodeURIComponent(stateParam)
+
+                    // stateの値が安全なパスであることを確認
+                    if (
+                        decoded.startsWith('/') &&     // 内部のパスであることを確認
+                        !decoded.startsWith('//') &&   // 外部のURLではないことを確認
+                        decoded !== '/' &&             // TOPに戻ってループしてしまう事故を防ぐ
+                        decoded !== '/login'           // ログインページへの無駄なリダイレクトを防ぐ
+                    ) {
+                        originalPath = decoded
+                    }
+                } catch (err) {
+                    console.error('stateのでコード失敗:', err)
+                }
             }
 
-            // 元のページへ移動
+            // 正常にログインできたら元のページ（招待ページ or /home）へ移動
             navigateTo(originalPath)
 
         } catch (err) {
             console.error('認証エラー:', err)
             alert(`ログインに失敗しました: ${err.message}`)
-            navigateTo('/home')
+            // ログイン失敗時はTOPへ
+            navigateTo('/')
         }
     } else {
-        // codeがないのにこのページに来てしまった場合はホームへ逃がす
-        navigateTo('/home')
+        // codeがないのにこのページに来てしまった場合はTOPへ
+        navigateTo('/')
     }
 })
 </script>

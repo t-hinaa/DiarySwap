@@ -1,12 +1,25 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 const route = useRoute()
 const router = useRouter()
 const supabase = useSupabaseClient()
 
+const currentUser = ref(null)
 const groupId = route.params.id
+
+// ログイン中のユーザー情報を取得
+onMounted(async () => {
+    const { data } = await supabase.auth.getUser()
+    currentUser.value = data.user?.id
+
+    console.log("今ログインしているユーザーID (currentUser):", currentUser.value);
+console.log("現在表示されている投稿 (currentPost):", currentPost.value);
+console.log("投稿の作者ID (author_id):", currentPost.value?.author_id);
+
+    await fetchGroupDetail()
+})
 
 const groupDetails = ref(null)
 const diaryPosts = ref([])
@@ -15,6 +28,14 @@ const errorMessage = ref('')
 
 // ページネーション
 const currentPageIndex = ref(0);
+
+// ページが開いた瞬間にユーザー情報と日記データを取得
+onMounted(async () => {
+    const { data } = await supabase.auth.getUser()
+    currentUser.value = data.user?.id
+    
+    await fetchGroupDetail()
+})
 
 // データ取得
 const currentPost = computed(() => {
@@ -42,21 +63,11 @@ const currentPost = computed(() => {
 // ページ数の計算（何セット分投稿があるか）
 const totalPostsCount = computed(()=> diaryPosts.value.length || 1);
 
-// 日付を綺麗に
-const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    const dayOfWeek = daysArr[date.getDay()];
-    return `${month}/${day}(${dayOfWeek}) ${hours}:${minutes}`;
-}
-
 const fetchGroupDetail = async () => {
     try {
         isLoading.value = true
 
-        // グループ情報の取得
+        // RPC関数を使用してグループ情報の取得
         const { data, error } = await supabase.rpc('get_group_diary_details', {
             p_group_id: groupId
         });
@@ -65,6 +76,10 @@ const fetchGroupDetail = async () => {
 
         groupDetails.value = data.group;
         diaryPosts.value = data.posts || [];
+
+        console.log("1番目の投稿データの中身:", diaryPosts.value[0]);
+        console.log("今のユーザーID:", currentUser.value);
+
     } catch (err) {
         console.error('詳細情報の取得に失敗しました:', err)
         errorMessage.value = '交換日記を開けませんでした。'
@@ -72,10 +87,6 @@ const fetchGroupDetail = async () => {
         isLoading.value = false
     }
 }
-
-onMounted(() => {
-    fetchGroupDetail();
-});
 
 // 日記編集画面へ
 const goToEdit = () => { 
@@ -98,13 +109,15 @@ const goToEdit = () => {
             >
                 <span>一覧へ</span>
             </button>
-            <!-- 編集ボタン -->
-            <button
-                @click="router.push(`/groups/${groupId}/edit`)"
-                class="ml-auto inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white border border-[#e2DAD0] text-[#5A1222] hover:bg-[#F4EFEA] shadow-sm transition text-xs font-bold tracking-wider"
-            >
-                <span>編集画面へ</span>
-            </button>
+            <!-- 編集ボタン(自分が作者の場合のみ表示) -->
+            <div v-if="currentPost && currentPost.author_id === currentUser">
+                <button
+                    @click="router.push(`/groups/${groupId}/edit`)"
+                    class="ml-auto inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white border border-[#e2DAD0] text-[#5A1222] hover:bg-[#F4EFEA] shadow-sm transition text-xs font-bold tracking-wider"
+                >
+                    <span>編集画面へ</span>
+                </button>
+            </div>
         </div>
         
         <!-- 日記 -->

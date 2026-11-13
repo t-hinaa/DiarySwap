@@ -26,7 +26,6 @@ const fetchEditData = async () => {
 
     try {
         isLoading.value = true
-        console.log("データ取得開始, groupId:", groupId);
 
         const { data, error } = await supabase.rpc('get_group_diary_details', {
             p_group_id: groupId

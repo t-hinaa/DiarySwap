@@ -43,8 +43,6 @@ const goToCreate = async () => {
 
         if (error) throw error;
 
-        console.log("Supabaseから返ってきた生データ:", data);
-
         // データを使いやすい形に整形
         const groups = data.map(item => {
             // item.groups が配列の場合とオブジェクトの場合の両方に対応
@@ -58,8 +56,6 @@ const goToCreate = async () => {
                 current_turn_index: g.current_turn_index
             };
         }).filter(Boolean);
-
-        console.log("整形後のグループ一覧:", groups);
 
         // 0件の場合
         if (groups.length === 0) {
@@ -94,23 +90,29 @@ const goToCreate = async () => {
 const handleGroupSelect = (selectedGroup) => {
     showModal.value = false;
 
-    // デバッグ用（何が選ばれたかコンソールに出す）
-    console.log("選択されたグループ:", selectedGroup);
+    // 1. 選択されたのがオブジェクトかID（文字列）かにかかわらず、IDを取り出す
+    const groupId = typeof selectedGroup === 'object' ? selectedGroup?.id : selectedGroup;
 
-    // 念のため safety チェック
-    const groupId = selectedGroup?.id || selectedGroup;
     if (!groupId) {
         alert('グループIDが見つかりませんでした。');
         return;
     }
 
-    // 【ターン制限チェック】
-    if (selectedGroup.turn_order !== selectedGroup.current_turn_index) {
-        alert(`「${selectedGroup.name}」は、今はほかのメンバーのターンです！順番を待ちましょう🫟`);
+    // myGroups の中から該当するグループのデータを見つける
+    const targetGroup = myGroups.value.find(g => g.id === groupId);
+
+    if (!targetGroup) {
+        alert('グループ情報が見つかりませんでした。');
         return;
     }
 
-    router.push(`/groups/${groupId}/create`);
+    // 【ターン制限チェック】
+    if (targetGroup.turn_order !== targetGroup.current_turn_index) {
+        alert(`「${targetGroup.name}」は、今はほかのメンバーのターンです！順番を待ちましょう🫟`);
+        return;
+    }
+
+    router.push(`/groups/${targetGroup.id}/create`);
 }
 
 //グループ作成画面

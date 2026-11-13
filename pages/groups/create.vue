@@ -33,7 +33,6 @@ const fetchThemes = async () => {
         if (error) throw error
 
         themes.value = data || []
-        console.log('取得したテーマ一覧:', themes.value)
     } catch (err) {
         console.error('テーマの取得に失敗しました:', err.message)
     } finally {
@@ -67,8 +66,6 @@ const createGroup = async () => {
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
         const session = sessionData?.session
         const accessToken = session?.access_token
-
-        console.log('【デバッグ】取得したアクセストークン:', accessToken)
 
         // アクセストークンが取得できていない場合は処理をストップ
         if (!accessToken) {

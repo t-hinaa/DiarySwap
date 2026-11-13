@@ -14,10 +14,6 @@ onMounted(async () => {
     const { data } = await supabase.auth.getUser()
     currentUser.value = data.user?.id
 
-    console.log("今ログインしているユーザーID (currentUser):", currentUser.value);
-console.log("現在表示されている投稿 (currentPost):", currentPost.value);
-console.log("投稿の作者ID (author_id):", currentPost.value?.author_id);
-
     await fetchGroupDetail()
 })
 
@@ -76,9 +72,6 @@ const fetchGroupDetail = async () => {
 
         groupDetails.value = data.group;
         diaryPosts.value = data.posts || [];
-
-        console.log("1番目の投稿データの中身:", diaryPosts.value[0]);
-        console.log("今のユーザーID:", currentUser.value);
 
     } catch (err) {
         console.error('詳細情報の取得に失敗しました:', err)

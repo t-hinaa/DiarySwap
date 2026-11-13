@@ -43,8 +43,6 @@ const goToCreate = async () => {
 
         if (error) throw error;
 
-        console.log("Supabaseから返ってきた生データ:", data);
-
         // データを使いやすい形に整形
         const groups = data.map(item => {
             // item.groups が配列の場合とオブジェクトの場合の両方に対応
@@ -58,8 +56,6 @@ const goToCreate = async () => {
                 current_turn_index: g.current_turn_index
             };
         }).filter(Boolean);
-
-        console.log("整形後のグループ一覧:", groups);
 
         // 0件の場合
         if (groups.length === 0) {
@@ -93,9 +89,6 @@ const goToCreate = async () => {
 // モーダルでグループが選択されたとき
 const handleGroupSelect = (selectedGroup) => {
     showModal.value = false;
-
-    // デバッグ用（何が選ばれたかコンソールに出す）
-    console.log("選択されたグループ:", selectedGroup);
 
     // 念のため safety チェック
     const groupId = selectedGroup?.id || selectedGroup;

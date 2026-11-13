@@ -25,13 +25,6 @@
                     <NuxtLink to="/list" class="px-5 py-2 rounded-full text-stone-600 font-medium hover:text-stone-900 transition duration-200">
                         日記を読む
                     </NuxtLink>
-                    <NuxtLink
-                        v-if="groupId && groupId !== 'undefined'"
-                        :to="`/groups/${groupId}/create`" 
-                        class="px-5 py-2 rounded-full text-stone-600 font-medium hover:text-stone-900 transition duration-200"
-                    >
-                        日記を書く
-                    </NuxtLink>
                     <NuxtLink to="/groups/create" class="px-5 py-2 rounded-full text-stone-600 font-medium hover:text-stone-900 transition duration-200">
                         日記を始める
                     </NuxtLink>

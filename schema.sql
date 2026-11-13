@@ -567,6 +567,7 @@ begin
                             'date', d.date,
                             'weather', d.weather,
                             'author_name', coalesce(u.display_name, 'メンバー'),
+                            'author_id', d.author_id,
                             'theme_title', t.title,
                             'theme_points', t.points,
                             'theme_text', d.theme_text,
